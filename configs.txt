@@ -1,0 +1,394 @@
+1) Configure a sua aplicação e suba-a manualmente. Você pode se guiar pelo script que o instrutor seguiu durante a aula:
+
+# Passos para configurar a app e subir manualmente
+    # Criando o arquivo .env (temporário)
+        cd /vagrant/jenkins-todo-list/to_do/
+        vi .env
+            [config]
+            # Secret configuration
+            SECRET_KEY = 
+
+            # conf
+            DEBUG=True
+
+            # Database
+            DB_NAME = "todo_dev"
+            DB_USER = "devops_dev"
+            
+            DB_HOST = "localhost"
+            DB_PORT = "3306"
+
+    # Instalando o venv
+        sudo pip3 install virtualenv nose coverage nosexcover pylint
+    # Criando e ativando o venv (dev)
+        cd ../    
+        virtualenv  --always-copy  venv-django-todolist
+        source venv-django-todolist/bin/activate
+        pip install -r requirements.txt
+    # Fazendo a migracao inicial dos dados
+        python manage.py makemigrations
+        python manage.py migrate
+    # Criando o superuser para acessar a app
+        python manage.py createsuperuser
+    # Repetir o processo de migracaoção para o ambiente de produção:
+        vi to_do/.env
+            [config]
+            # Secret configuration
+            SECRET_KEY = 
+
+            # conf
+            DEBUG=True
+
+            # Database
+            DB_NAME = "todo"
+            DB_USER = "devops"
+            
+            DB_HOST = "localhost"
+            DB_PORT = "3306"
+
+    # Fazendo a migracao inicial dos dados
+        python manage.py makemigrations
+        python manage.py migrate
+    # Criando o superuser para acessar a app
+        python manage.py createsuperuser
+
+    # Verificar o ip do servidor
+        ip addr
+    # Rodando a app
+        python manage.py runserver 0:8000
+        http://192.168.33.10:8000
+2) Configure o daemon do Docker. Você pode se guiar pelo script que o instrutor seguiu durante a aula:
+
+# Expor o deamon do docker
+    sudo mkdir -p /etc/systemd/system/docker.service.d/
+    sudo vi /etc/systemd/system/docker.service.d/override.conf
+        [Service]
+        ExecStart=
+        ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2376
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker.service
+3) Faça o build da sua imagem. Você pode se guiar pelo script que o instrutor seguiu durante a aula:
+
+# Sugested Plugins
+# Instalando os plugins
+    Gerenciar Jenkins -> Gerenciar Plugins -> Disponíveis
+        # docker
+    Install without restart -> Depois reiniciar o jenkins
+Gerenciar Jenkins -> Configurar o sistema -> Nuvem
+    # Name: docker
+    # URI: tcp://127.0.0.1:2376
+    # Enabled
+# This project is parameterized: 
+    DOCKER_HOST
+    tcp://127.0.0.1:2376
+# Voltar no job criado na aula anterior
+    # Manter a mesma configuracao do GIT para desenvolvimento
+    # Build step 1: Executar Shell
+# Validando a sintaxe do Dockerfile
+docker run --rm -i hadolint/hadolint < Dockerfile
+    # Build step 2: Build/Publish Docker Image
+        Directory for Dockerfile: ./
+        Cloud: docker
+        Image: rafaelvzago/django_todolist_image_build
+
+
+
+
+
+1) Prepare os seus ambientes. Você pode se guiar pelo script que o instrutor seguiu durante a aula:
+
+# Instalar o plugin Config File Provider
+
+# Configurar o Managed Files para Dev
+    # Name : .env-dev
+        [config]
+        # Secret configuration
+        SECRET_KEY = 
+        # conf
+        DEBUG=True
+        # Database
+        DB_NAME = "todo_dev"
+        DB_USER = "devops_dev"
+        
+        DB_HOST = "localhost"
+        DB_PORT = "3306"
+
+# Configurar o Managed Files para Prod
+    # Name: .env.-prod
+        [config]
+        # Secret configuration
+        SECRET_KEY = 
+        # conf
+        DEBUG=False
+        # Database
+        DB_NAME = "todo"
+        DB_USER = "devops"
+        
+        DB_HOST = "localhost"
+        DB_PORT = "3306"
+
+# No job: jenkins-todo-list-principal importar o env de dev para teste:
+
+    Adicionar passo no build: Provide configuration Files
+    File: .env-dev
+    Target: ./to_do/.env
+
+    Adicionar passo no build: Executar Shell
+
+# Criando o Script para Subir o container com o arquivo de env e testar a app:
+    #!/bin/sh
+
+    # Subindo o container de teste
+    docker run -d -p 82:8000 -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock -v /var/lib/jenkins/workspace/jenkins-todo-list-principal/to_do/.env:/usr/src/app/to_do/.env --name=todo-list-teste django_todolist_image_build
+
+    # Testando a imagem
+    docker exec -i todo-list-teste
+     python manage.py test --keep
+    exit_code=$?
+
+    # Derrubando o container velho
+    docker rm -f todo-list-teste
+
+    if [ $exit_code -ne 0 ]; then
+        exit 1
+    fi
+2) Faça o push da sua imagem para o Docker Hub. Você pode se guiar pelo script que o instrutor seguiu durante a aula:
+
+# Instalar o plugin: Parameterized Trigger 
+
+# Modificar o Job para startar com 2 parametros:
+    # Geral:
+    Este build é parametrizado com 2 parametros de string
+        Nome: image
+        Valor padrão: <seu-usuario-no-dockerhub>/django_todolist_image_build
+
+        Nome: DOCKER_HOST
+        Valor padrão: tcp://127.0.0.1:2376
+
+# No build step: Build / Publish Docker Image
+    # Mudar o nome da imagem para: <seu-usuario-no-dockerhub>/django_todolist_image_build
+    # Marcar: Push Image e configurar **suas credenciais** no dockerhub
+
+# Mudar no job de teste a imagem para: ${image}
+    docker run -d -p 82:8000 -v /var/run/mysqld/mysqld.sock:/var/run/my
+
+
+
+
+
+
+# Novo Job: todo-list-desenvolvimento:
+    # Tipo: Pipeline
+    # Este build é parametrizado com 2 Builds de Strings:
+        Nome: image
+        Valor padrão: - Vazio, pois o valor sera recebido do job anterior.
+
+        Nome: DOCKER_HOST
+        Valor padrão: tcp://127.0.0.1:2376
+
+    pipeline {
+
+        agent any    
+
+        stages {
+            stage('Oi Mundo Pipeline como Codigo') {
+                steps {
+                    sh 'echo "Oi Mundo"'
+                }
+            }
+        }
+    }
+
+    pipeline {
+        environment {
+            dockerImage = "${image}"
+        }
+        agent any
+
+        stages {
+            stage('Carregando o ENV de desenvolvimento') {
+                steps {
+                    configFileProvider([configFile(fileId: '<id do seu arquivo de desenvolvimento>', variable: 'env')]) {
+                        sh 'cat $env > .env'
+                    }
+                }
+            }
+            stage('Derrubando o container antigo') {
+                steps {
+                    script {
+                        try {
+                            sh 'docker rm -f django-todolist-dev'
+                        } catch (Exception e) {
+                            sh "echo $e"
+                        }
+                    }
+                }
+            }        
+            stage('Subindo o container novo') {
+                steps {
+                    script {
+                        try {
+                            sh 'docker run -d -p 81:8000 -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock -v /var/lib/jenkins/workspace/jenkins-todo-list-desenvolvimento/.env:/usr/src/app/to_do/.env --name=django-todolist-dev ' + dockerImage + ':latest'
+                        } catch (Exception e) {
+                            slackSend (color: 'error', message: "[ FALHA ] Não foi possivel subir o container - ${BUILD_URL} em ${currentBuild.duration}s", tokenCredentialId: 'slack-token')
+                            sh "echo $e"
+                            currentBuild.result = 'ABORTED'
+                            error('Erro')
+                        }
+                    }
+                }
+            }
+            stage('Notificando o usuario') {
+                steps {
+                    slackSend (color: 'good', message: '[ Sucesso ] O novo build esta disponivel em: http://192.168.33.10:81/ ', tokenCredentialId: 'slack-token')
+                }
+            }
+        }
+    }
+
+# todo-list-principal
+    # Definir post build: image=$image
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # Criar o job para colocar a app em producao:
+    Nome: todo-list-producao
+    Tipo: Freestyle
+    # Este build é parametrizado com 2 Builds de Strings:
+        Nome: image
+        Valor padrão: - Vazio, pois o valor sera recebido do job anterior.
+
+        Nome: DOCKER_HOST
+        Valor padrão: tcp://127.0.0.1:2376
+
+    # Ambiente de build > Provide configuration files
+        File: .env-prod
+        Target: .env
+
+    # Build > Executar shell
+        #Execute shell
+        #!/bin/sh
+        { 
+            docker run -d -p 80:8000 -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock -v /var/lib/jenkins/workspace/todo-list-producao/.env:/usr/src/app/to_do/.env --name=django-todolist-prod $image:latest
+
+        } || { # catch
+            docker rm -f django-todolist-prod
+            docker run -d -p 80:8000 -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock -v /var/lib/jenkins/workspace/todo-list-producao/.env:/usr/src/app/to_do/.env --name=django-todolist-prod $image:latest
+        }    
+
+Ações de pós-build > Slack Notifications: Notify Success e Notify Every Failure
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Post build actions para os 3 jobs
+
+Job: jenkins-todo-list-principal > Ações de pós-build > Trigger parameterized buld on other projects
+    Projects to build: todo-list-desenvolvimento
+    # Add parameters > Predefined parameters
+        image=${image}
+
+Job: todo-list-desenvolvimento
+
+    pipeline {
+        environment {
+            dockerImage = "${image}"
+        }
+        agent any
+
+        stages {
+            stage('Carregando o ENV de desenvolvimento') {
+                steps {
+                    configFileProvider([configFile(fileId: '2ed9697c-45fc-4713-a131-53bdbeea2ae6', variable: 'env')]) {
+                        sh 'cat $env > .env'
+                    }
+                }
+            }
+            stage('Derrubando o container antigo') {
+                steps {
+                    script {
+                        try {
+                            sh 'docker rm -f django-todolist-dev'
+                        } catch (Exception e) {
+                            sh "echo $e"
+                        }
+                    }
+                }
+            }        
+            stage('Subindo o container novo') {
+                steps {
+                    script {
+                        try {
+                            sh 'docker run -d -p 81:8000 -v /var/run/mysqld/mysqld.sock:/var/run/mysqld/mysqld.sock -v /var/lib/jenkins/workspace/todo-list-desenvolvimento/.env:/usr/src/app/to_do/.env --name=django-todolist-dev ' + dockerImage + ':latest'
+                        } catch (Exception e) {
+                            slackSend (color: 'error', message: "[ FALHA ] Não foi possivel subir o container - ${BUILD_URL} em ${currentBuild.duration}s", tokenCredentialId: 'slack-token')
+                            sh "echo $e"
+                            currentBuild.result = 'ABORTED'
+                            error('Erro')
+                        }
+                    }
+                }
+            }
+            stage('Notificando o usuario') {
+                steps {
+                    slackSend (color: 'good', message: '[ Sucesso ] O novo build esta disponivel em: http://192.168.33.10:81/ ', tokenCredentialId: 'slack-token')
+                }
+            }
+            stage ('Fazer o deploy em producao?') {
+                steps {
+                    script {
+                        slackSend (color: 'warning', message: "Para aplicar a mudança em produção, acesse [Janela de 10 minutos]: ${JOB_URL}", tokenCredentialId: 'slack-token')
+                        timeout(time: 10, unit: 'MINUTES') {
+                            input(id: "Deploy Gate", message: "Deploy em produção?", ok: 'Deploy')
+                        }
+                    }
+                }
+            }
+            stage (deploy) {
+                steps {
+                    script {
+                        try {
+                            build job: 'todo-list-producao', parameters: [[$class: 'StringParameterValue', name: 'image', value: dockerImage]]
+                        } catch (Exception e) {
+                            slackSend (color: 'error', message: "[ FALHA ] Não foi possivel subir o container em producao - ${BUILD_URL}", tokenCredentialId: 'slack-token')
+                            sh "echo $e"
+                            currentBuild.result = 'ABORTED'
+                            error('Erro')
+                        }
+                    }
+                }
+            }
+        }
+    }
